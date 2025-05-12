@@ -1,0 +1,24 @@
+# local-cluster-deployment.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: local-gitops-cluster # Define the cluster name here
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  extraPortMappings:
+  - containerPort: 80
+    hostPort: 8080 # Host port for HTTP ingress, access at http://localhost:8080
+    protocol: TCP
+  - containerPort: 443
+    hostPort: 8443 # Host port for HTTPS ingress, access at https://localhost:8443
+    protocol: TCP
+  - containerPort: 8080
+    hostPort: 9090 # Host port for ArgoCD UI, access at http://localhost:9090
+    protocol: TCP
+- role: worker
+- role: worker

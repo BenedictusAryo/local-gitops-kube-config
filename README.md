@@ -22,7 +22,7 @@ graph TD
     classDef appDef fill:#8E44AD,stroke:#73359A,color:white,stroke-width:2px
 
     A[Developer] -->|Pushes App Code & Helm Chart| G_APP[GitHub: fastapi-app<br>Private Repo]
-    A -->|Pushes Config Manifests| G_CONF[GitHub: kind-gitops-config<br>Private Repo]
+    A -->|Pushes Config Manifests| G_CONF[GitHub: local-gitops-kube-config<br>Private Repo]
 
     subgraph "ArgoCD Watches & Deploys"
         ARGO[ArgoCD - Running in Kind Cluster] -->|Watches| G_CONF
@@ -84,17 +84,60 @@ This project utilizes the following tools to achieve a local GitOps workflow:
 ### ArgoCD:
 
 * **_Explanation:_** A declarative, GitOps continuous delivery tool for Kubernetes.
-* **_Role:_** The core of our GitOps workflow. ArgoCD monitors the kind-gitops-config repository for changes to application definitions (which point to Helm charts or other Kubernetes manifests). When changes are detected, ArgoCD automatically syncs the desired state from Git to the Kind cluster, ensuring the cluster's state matches the configuration in Git.
+* **_Role:_** The core of our GitOps workflow. ArgoCD monitors the local-gitops-kube-config repository for changes to application definitions (which point to Helm charts or other Kubernetes manifests). When changes are detected, ArgoCD automatically syncs the desired state from Git to the Kind cluster, ensuring the cluster's state matches the configuration in Git.
 
 ### Git:
 
 * **_Explanation:_** A distributed version control system.
-* **_Role:_** Used to manage the source code for the FastAPI application (fastapi-app repository) and the Kubernetes/ArgoCD configurations (kind-gitops-config repository). Git serves as the single source of truth for our applications and their desired state.
+* **_Role:_** Used to manage the source code for the FastAPI application (fastapi-app repository) and the Kubernetes/ArgoCD configurations (local-gitops-kube-config repository). Git serves as the single source of truth for our applications and their desired state.
 
 ### GitHub:
 
 * **_Explanation:_** A platform for hosting Git repositories.
-* **_Role:_** Hosts the private Git repositories (fastapi-app and kind-gitops-config) that ArgoCD monitors. Changes pushed to these repositories trigger the GitOps workflow.
+* **_Role:_** Hosts the private Git repositories (fastapi-app and local-gitops-kube-config) that ArgoCD monitors. Changes pushed to these repositories trigger the GitOps workflow.
+
+## Setting Up the Local Kubernetes Cluster using Kind
+A specific Kind configuration is recommended to expose ports for Ingress.
+
+1. **`local-cluster-deployment.yaml`:**
+Find this file in the root of this local-gitops-kube-config repository:
+```yaml
+# local-cluster-deployment.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: local-gitops-cluster # Define the cluster name here
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  extraPortMappings:
+  - containerPort: 80
+    hostPort: 8080 # Host port for HTTP ingress, access at http://localhost:8080
+    protocol: TCP
+  - containerPort: 443
+    hostPort: 8443 # Host port for HTTPS ingress, access at https://localhost:8443
+    protocol: TCP
+- role: worker
+- role: worker
+```
+
+2. **Create the Cluster:**
+Navigate to the directory containing `local-cluster-deployment.yaml` and run:
+```bash
+kind create cluster --config=local-cluster-deployment.yaml
+```
+If you didn't include name in the YAML, or want to override it:
+```bash
+kind create cluster --config=local-cluster-deployment.yaml --name local-gitops-cluster
+```
+Verify the cluster:
+```bash
+kubectl cluster-info --context kind-local-gitops-cluster
+```
 
 ## Repository Structure
 This repository is structured to manage the deployment of various applications into the Kubernetes cluster via ArgoCD:
@@ -115,36 +158,38 @@ This repository is structured to manage the deployment of various applications i
 
 Each application.yaml file is an ArgoCD Application Custom Resource Definition (CRD) that tells ArgoCD:
 
-Which Git repository to monitor (source).
-Which path within that repository contains the Kubernetes manifests or Helm chart.
-The target revision (e.g., branch, tag, commit).
-The destination Kubernetes cluster and namespace.
-Any specific parameters or values overrides for Helm charts.
-Getting Started
-Prerequisites: Ensure Docker, Kind, kubectl, Helm, and the ArgoCD CLI are installed.
-Clone this repository: git clone <URL_to_this_repo>
-Set up Kind Cluster: Follow the instructions from the main guide to create your Kind cluster with appropriate port mappings.
-Install ArgoCD: Install ArgoCD into your Kind cluster and configure access (login, connect to Git repos).
-Apply ArgoCD Applications: Once ArgoCD is running and can access this repository, it will automatically start deploying the applications defined herein. You can also manually trigger syncs via the ArgoCD UI or CLI.
-Initially, you might apply a root application or apply these manifests directly using kubectl apply -n argocd -f <path-to-application.yaml>. For a fully GitOps approach, ensure ArgoCD is configured to watch this repository.
-(You can add more specific instructions on how to bootstrap the process if you have a root ArgoCD Application manifest that deploys all other applications, or if users need to manually apply these manifests to ArgoCD first.)
+* Which Git repository to monitor (source).
+* Which path within that repository contains the Kubernetes manifests or Helm chart.
+* The target revision (e.g., branch, tag, commit).
+* The destination Kubernetes cluster and namespace.
+* Any specific parameters or values overrides for Helm charts.
 
-## Workflow
+## Getting Started
+1. **Prerequisites:** Ensure Docker, Kind, kubectl, Helm, and the ArgoCD CLI are installed.
+Clone this repository: `git clone https://github.com/BenedictusAryo/local-gitops-kube-config.git`
+2. **Set up Kind Cluster:** Follow the instructions from the main guide to create your Kind cluster with appropriate port mappings.
+3. **Install ArgoCD:** Install ArgoCD into your Kind cluster and configure access (login, connect to Git repos).
+4. **Apply ArgoCD Applications:** Once ArgoCD is running and can access this repository, it will automatically start deploying the applications defined herein. You can also manually trigger syncs via the ArgoCD UI or CLI.
+    * Initially, you might apply a root application or apply these manifests directly using `kubectl apply -n argocd -f <path-to-application.yaml>`. For a fully GitOps approach, ensure ArgoCD is configured to watch this repository.
+*(You can add more specific instructions on how to bootstrap the process if you have a root ArgoCD Application manifest that deploys all other applications, or if users need to manually apply these manifests to ArgoCD first.)*
+
+## CI/CD Workflow
 
 1. Application Code Change (fastapi-app repo):
 
-Developer modifies application code.
-Builds and pushes a new Docker image (e.g., to a local Kind registry or a remote registry).
-Updates the Helm chart in the fastapi-app repo (e.g., image tag, application config).
-Pushes changes to the fastapi-app Git repository.
+* Developer modifies application code.
+* Builds and pushes a new Docker image (e.g., to a local Kind registry or a remote registry).
+* Updates the Helm chart in the fastapi-app repo (e.g., image tag, application config).
+* Pushes changes to the fastapi-app Git repository.
 
-2. Configuration Change (kind-gitops-config repo):
-Developer modifies Helm chart values, replica counts, or adds/removes applications by changing the ArgoCD Application manifests in this repository.
-Pushes changes to the kind-gitops-config Git repository.
+2. Configuration Change (local-gitops-kube-config repo):
+* Developer modifies Helm chart values, replica counts, or adds/removes applications by changing the ArgoCD Application manifests in this repository.
+* Pushes changes to the local-gitops-kube-config Git repository.
 
 3. ArgoCD Sync:
 
-ArgoCD detects changes in the watched Git repositories/paths/branches.
-ArgoCD compares the live state in the Kubernetes cluster with the desired state in Git.
-ArgoCD automatically (if configured) syncs the changes, applying them to the Kind cluster.
+* ArgoCD detects changes in the watched Git repositories/paths/branches.
+* ArgoCD compares the live state in the Kubernetes cluster with the desired state in Git.
+* ArgoCD automatically (if configured) syncs the changes, applying them to the Kind cluster.
+
 This ensures your local Kubernetes environment accurately reflects the configurations defined in your Git repositories.

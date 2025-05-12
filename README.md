@@ -139,6 +139,14 @@ Verify the cluster:
 kubectl cluster-info --context kind-local-gitops-cluster
 ```
 
+3. **Install ArgoCD** manually and port-forward for local access:
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl rollout status deployment/argocd-server -n argocd
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
 ## Repository Structure
 This repository is structured to manage the deployment of various applications into the Kubernetes cluster via ArgoCD:
 

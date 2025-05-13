@@ -1,0 +1,25 @@
+# Production environment values for the bootstrap chart
+repository:
+  url: https://github.com/BenedictusAryo/local-gitops-kube-config.git
+  # For production, you might want to use SSH with a deploy key
+  # auth:
+  #   sshPrivateKey: |-
+  #     -----BEGIN OPENSSH PRIVATE KEY-----
+  #     Your deploy key here
+  #     -----END OPENSSH PRIVATE KEY-----
+
+# Override applications to use production values
+applications:
+  infrastructure:
+    enabled: true
+    namespace: infrastructure
+    path: charts/infrastructure
+    valueFiles:
+      - ../../environments/prod/infra-values.yaml
+  
+  applications:
+    enabled: true
+    namespace: applications
+    path: charts/applications
+    valueFiles:
+      - ../../environments/prod/apps-values.yaml

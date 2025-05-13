@@ -1,0 +1,44 @@
+# Default values for infrastructure components
+# This file contains the common configurations for all infrastructure components
+
+# Enable/disable individual components
+ingress-nginx:
+  enabled: true
+  controller:
+    service:
+      externalTrafficPolicy: Local
+    publishService:
+      enabled: true
+    ingressClassResource:
+      name: nginx
+      default: true
+    watchIngressWithoutClass: true
+    nodeSelector:
+      ingress-ready: "true"
+    extraArgs:
+      publish-status-address: localhost
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "postgres"
+    username: "appuser"
+    password: "apppassword"
+    database: "appdb"
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+
+argo-cd:
+  enabled: true
+  server:
+    service:
+      type: ClusterIP
+    extraArgs:
+      - --insecure
+    ingress:
+      enabled: true
+      hosts:
+        - argocd.localhost
+      ingressClassName: "nginx"

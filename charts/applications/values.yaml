@@ -1,0 +1,33 @@
+# Default values for application components
+# This file contains the common configurations for all applications
+
+# Enable/disable individual applications
+fastapi-app:
+  enabled: true
+  image:
+    repository: ghcr.io/benedictusaryo/fastapi-app
+    tag: latest
+    pullPolicy: Always
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    port: 8000
+  ingress:
+    enabled: true
+    className: "nginx"
+    hosts:
+      - host: fastapi.localhost
+        paths:
+          - path: /
+            pathType: Prefix
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  postgresql:
+    host: postgresql.infrastructure.svc.cluster.local
+    database: appdb
+    username: appuser

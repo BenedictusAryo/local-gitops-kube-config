@@ -1,0 +1,35 @@
+NOTES:
+Thank you for installing {{ .Chart.Name }}.
+
+The bootstrap chart has created ArgoCD applications to manage your infrastructure and applications.
+
+To check the status of the ArgoCD applications:
+
+  kubectl get applications -n argocd
+
+To view detailed information about the applications:
+
+  kubectl describe application {{ .Values.applications.infrastructure.name }} -n argocd
+  kubectl describe application {{ .Values.applications.applications.name }} -n argocd
+
+You can also check the status through the ArgoCD UI:
+  
+  https://localhost:8080
+
+Now ArgoCD will automatically sync and manage your:
+{{- if .Values.applications.infrastructure.enabled }}
+  - Infrastructure components ({{ .Values.applications.infrastructure.name }})
+{{- end }}
+{{- if .Values.applications.applications.enabled }}
+  - Application components ({{ .Values.applications.applications.name }})
+{{- end }}
+
+These applications will be deployed to their respective namespaces:
+{{- if .Values.applications.infrastructure.enabled }}
+  - {{ .Values.applications.infrastructure.namespace }}
+{{- end }}
+{{- if .Values.applications.applications.enabled }}
+  - {{ .Values.applications.applications.namespace }}
+{{- end }}
+
+Remember to update your values.yaml files in the environments/dev/ directory to customize your deployment.

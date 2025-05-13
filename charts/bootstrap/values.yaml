@@ -1,0 +1,35 @@
+# Default values for the argocd-bootstrap chart
+# This configures the ArgoCD applications for infrastructure and applications
+
+# Name overrides if needed
+nameOverride: ""
+fullnameOverride: ""
+
+# Git repository configuration
+repository:
+  url: https://github.com/BenedictusAryo/local-gitops-kube-config.git
+  # For private repositories, use one of the following auth methods
+  auth:
+    # Username/Password authentication (recommended for local development)
+    username: ""  # GitHub username
+    password: ""  # GitHub personal access token with repo scope
+    # Or SSH authentication
+    sshPrivateKey: ""  # Base64-encoded SSH private key
+
+# ArgoCD applications configuration
+applications:
+  infrastructure:
+    enabled: true
+    name: infrastructure
+    namespace: infrastructure
+    path: charts/infrastructure
+    valueFiles:
+      - ../../environments/dev/infra-values.yaml
+  
+  applications:
+    enabled: true
+    name: applications
+    namespace: applications
+    path: charts/applications
+    valueFiles:
+      - ../../environments/dev/apps-values.yaml

@@ -2,6 +2,8 @@
 
 Develop and experience a local GitOps workflow for Kubernetes applications using Docker, Kind, Kubernetes, ArgoCD, Helm, and GitHub.
 
+> **New to this project?** Check out the [QuickStart Guide](./QUICKSTART.md) for a fast setup!
+
 ## Purpose
 
 This project demonstrates how to establish a GitOps-driven development environment on your local workstation. By leveraging tools like Kind for local Kubernetes clusters, Helm for packaging applications, and ArgoCD for continuous delivery from Git, you can simulate and learn production-grade CI/CD practices. This setup allows for declarative configuration management, automated deployments, and a clear audit trail of all changes made to your applications and infrastructure, all managed through Git repositories.
@@ -97,7 +99,18 @@ This project utilizes the following tools to achieve a local GitOps workflow:
 * **_Role:_** Hosts the private Git repositories (fastapi-app and local-gitops-kube-config) that ArgoCD monitors. Changes pushed to these repositories trigger the GitOps workflow.
 
 ## Setting Up the Local Kubernetes Cluster using Kind
-A specific Kind configuration is recommended to expose ports for Ingress.
+### Prerequisites & CLI Installations
+
+1. Install Docker Desktop: [Download Docker Desktop](https://www.docker.com/products/docker-desktop). Docker Desktop includes kubectl.
+2. Install CLI tools:
+   - macOS (using Homebrew):
+     ```bash
+     brew install kind helm argocd base64
+     ```
+   - Windows (using Scoop):
+     ```bash
+     scoop install kind helm argocd base64
+     ```
 
 1. **`local-cluster-deployment.yaml`:**
 Find this file in the root of this local-gitops-kube-config repository:
@@ -174,34 +187,30 @@ Then navigate to https://127.0.0.1:8080/ to change the password.
 
 * **Use ArgoCD CLI**
 ```bash
-# Install ArgoCD CLI
-# macOS (Homebrew)
-brew install argocd
-
-# Windows (Scoop)
-scoop install argocd
-
-# Verify installation
-argocd version
-
 # Log in to the local ArgoCD server
-argocd login localhost:8080 \
-  --username admin \
-  --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
-  --insecure
+argocd login 127.0.0.1:8080 --username admin --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" --insecure
 
 # (Optional) If you have multiple ArgoCD API contexts, set the default
 argocd context localhost:8080
 
 # Ensure kubectl is pointing at your Kind cluster
 kubectl config use-context kind-local-gitops-cluster
-```  
+``` 
+
+* **(Optional) change ArgoCD admin password and remove initial secret**
+```bash
+# Change admin password (interactive)
+argocd account update-password
+
+# After successfully changing the password, delete the initial secret
+kubectl -n argocd delete secret argocd-initial-admin-secret
+```
 
 ## Connecting ArgoCD to GitHub Repository
 
 After installing ArgoCD and gaining access to the UI, you need to connect ArgoCD to your GitHub repository to enable the GitOps workflow. Here's how to do it:
 
-### 1. Login to ArgoCD CLI (Optional but Recommended)
+### 1. Login to ArgoCD CLI (Optional, should be done in previous step)
 
 Install the ArgoCD CLI and login:
 
@@ -242,17 +251,23 @@ argocd repo add git@github.com:BenedictusAryo/local-gitops-kube-config.git \
 
 ### 3. Create the Initial ArgoCD Applications
 
-Now you need to create the initial ArgoCD Applications that will deploy your infrastructure and applications:
+Now you need to create the initial ArgoCD Applications that will deploy your infrastructure and applications. We'll use a bootstrap Helm chart to set this up:
 
 ```bash
-# Apply the infrastructure application
-kubectl apply -f manifests/infra-app.yaml
+# Install the bootstrap chart to create ArgoCD applications
+helm install bootstrap ./charts/bootstrap \
+  -f ./environments/dev/bootstrap-values.yaml \
+  --namespace argocd
 
-# Apply the applications application
-kubectl apply -f manifests/apps-app.yaml
+# For private repositories, add your credentials
+helm install bootstrap ./charts/bootstrap \
+  -f ./environments/dev/bootstrap-values.yaml \
+  --namespace argocd \
+  --set repository.auth.username=<github-username> \
+  --set repository.auth.password=<github-personal-access-token>
 ```
 
-These application manifests define the connection between ArgoCD and specific paths in your repository.
+This bootstrap chart will create ArgoCD applications that define the connection between ArgoCD and specific paths in your repository.
 
 ### 4. Verify the Connection
 
@@ -278,14 +293,46 @@ If you're using private repositories, you have several authentication options:
 
 For local development with a private repository, using a PAT is typically the simplest approach:
 
+#### Option 1: Using Helm values for authentication
+
+When installing the bootstrap chart, provide your GitHub credentials:
+
+```bash
+# Install bootstrap chart with repository credentials
+helm install bootstrap ./charts/bootstrap \
+  -f ./environments/dev/bootstrap-values.yaml \
+  --namespace argocd \
+  --set repository.auth.username=<github-username> \
+  --set repository.auth.password=<github-personal-access-token>
+```
+
+#### Option 2: Manually creating a secret
+
+Alternatively, you can manually create a secret:
+
 ```bash
 # Create a Kubernetes secret for GitHub credentials
-kubectl create secret generic github-creds \
+kubectl create secret generic repo-github-benedictusaryo-local-gitops-kube-config \
   --namespace argocd \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/BenedictusAryo/local-gitops-kube-config.git \
   --from-literal=username=<github-username> \
-  --from-literal=password=<github-personal-access-token>
+  --from-literal=password=<github-personal-access-token> \
+  --label=argocd.argoproj.io/secret-type=repository
+```
 
-# Reference this secret in your ArgoCD repository configuration
+#### Option 3: Using SSH
+
+For SSH authentication, update your bootstrap values file:
+
+```yaml
+repository:
+  url: git@github.com:BenedictusAryo/local-gitops-kube-config.git
+  auth:
+    sshPrivateKey: |-
+      -----BEGIN OPENSSH PRIVATE KEY-----
+      Your private key content goes here
+      -----END OPENSSH PRIVATE KEY-----
 ```
 
 Once the repository connection is established, ArgoCD will continuously monitor your Git repository for changes and automatically apply them to your Kubernetes cluster according to the defined applications.
@@ -296,8 +343,15 @@ Once the repository connection is established, ArgoCD will continuously monitor 
 This repository is structured to manage the deployment of various applications into the Kubernetes cluster via ArgoCD:
 
 ```
-.
+local-gitops-kube-config/               # This repository
 ├── charts/                             # Main directory for Helm charts
+│   ├── bootstrap/                      # Bootstrap chart for ArgoCD application setup
+│   │   ├── Chart.yaml                  # Bootstrap chart definition
+│   │   ├── values.yaml                 # Default values for bootstrap
+│   │   └── templates/                  # Bootstrap templates
+│   │       ├── apps-app.yaml           # Template for applications ArgoCD app
+│   │       ├── infra-app.yaml          # Template for infrastructure ArgoCD app
+│   │       └── repository-secret.yaml  # Template for Git repository secret
 │   ├── infrastructure/                 # Parent chart for all infrastructure components
 │   │   ├── Chart.yaml                  # Main chart definition
 │   │   ├── values.yaml                 # Default values for infrastructure
@@ -310,11 +364,12 @@ This repository is structured to manage the deployment of various applications i
 │       ├── values.yaml                 # Default values for applications
 │       └── charts/                     # Subcharts for applications
 │           └── fastapi-app/            # FastAPI application subchart
-├── manifests/                          # ArgoCD Application manifests 
-│   ├── infra-app.yaml                  # ArgoCD Application for infrastructure (includes ArgoCD itself)
+├── manifests/                          # Legacy ArgoCD Application manifests (kept for reference)
+│   ├── infra-app.yaml                  # ArgoCD Application for infrastructure
 │   └── apps-app.yaml                   # ArgoCD Application for applications
 └── environments/                       # Environment-specific overrides
     └── dev/                            # Development environment
+        ├── bootstrap-values.yaml       # Bootstrap values for dev
         ├── infra-values.yaml           # Infra values override for dev
         └── apps-values.yaml            # App values override for dev
 ```
@@ -358,6 +413,15 @@ This separation provides several benefits:
 - Ability to version and roll back infrastructure separately from applications
 - Better alignment with organizational responsibilities
 
+## Multiple Environments
+
+This repository supports multiple deployment environments:
+
+- **dev**: Local development environment (default)
+- **prod**: Production-like environment with high availability settings
+
+For detailed information on deploying to different environments, see the [Environments Guide](./ENVIRONMENTS.md).
+
 ## CI/CD Workflow
 
 The GitOps workflow implemented in this project follows these steps:
@@ -365,7 +429,8 @@ The GitOps workflow implemented in this project follows these steps:
 1. **Initial Setup**:
    - Create a Kind cluster using the configuration provided
    - Manually deploy ArgoCD to bootstrap the GitOps process
-   - Apply the initial ArgoCD Application manifests to connect ArgoCD to this repository
+   - Install the bootstrap Helm chart to create ArgoCD applications
+   - Alternatively, use the `bootstrap-local-gitops.ps1` script to automate the entire setup
 
 2. **Infrastructure Deployment**:
    - ArgoCD pulls the infrastructure chart and its subcharts 

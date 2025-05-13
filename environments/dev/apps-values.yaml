@@ -1,0 +1,21 @@
+# Development environment application values override
+
+# FastAPI App development configuration
+fastapi-app:
+  replicaCount: 1
+  image:
+    tag: dev
+  env:
+    - name: APP_ENV
+      value: development
+    - name: LOG_LEVEL
+      value: debug
+    - name: DATABASE_URI
+      value: postgresql://appuser:apppassword@postgresql.infrastructure.svc.cluster.local:5432/appdb
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi

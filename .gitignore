@@ -1,0 +1,17 @@
+# Ignore chart dependencies
+**/charts/*.tgz
+# Ignore rendered templates
+**/templates/_rendered/
+# Ignore local temporary files
+tmp/
+# Ignore OS specific files
+.DS_Store
+Thumbs.db
+# Ignore local Helm chart dependencies
+**/Chart.lock
+charts/infrastructure/charts/*
+!charts/infrastructure/charts/.gitkeep
+# Exclude vscode specific files
+.vscode/
+# Ignore extracted files from chart testing
+.extracted/

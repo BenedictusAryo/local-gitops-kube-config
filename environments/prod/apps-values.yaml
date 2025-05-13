@@ -1,0 +1,61 @@
+# Production-like environment values for applications
+# This file demonstrates how to configure applications for a production-like environment
+
+fastapi-app:
+  replicaCount: 3
+  image:
+    tag: stable
+  
+  # Enhanced resource allocation for production
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+  
+  # Production environment variables
+  env:
+    - name: APP_ENV
+      value: production
+    - name: LOG_LEVEL
+      value: warning
+    - name: ENABLE_METRICS
+      value: "true"
+  
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  # Production ingress settings with TLS
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: api-example-com-tls
+        hosts:
+          - api.example.com
+  
+  # Additional production settings
+  podSecurityContext:
+    fsGroup: 1000
+  
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000

@@ -1,0 +1,95 @@
+# Production-like environment infrastructure values override
+
+# NGINX Ingress Controller configuration
+ingress-nginx:
+  controller:
+    replicaCount: 2
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    config:
+      use-forwarded-headers: "true"
+      compute-full-forwarded-for: "true"
+      use-proxy-protocol: "true"
+    metrics:
+      enabled: true
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+
+# PostgreSQL configuration
+postgresql:
+  global:
+    postgresql:
+      auth:
+        existingSecret: "postgresql-prod-credentials"
+  primary:
+    persistence:
+      size: 20Gi
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+    podSecurityContext:
+      fsGroup: 26
+    containerSecurityContext:
+      runAsUser: 26
+  readReplicas:
+    replicaCount: 1
+    persistence:
+      size: 20Gi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# ArgoCD configuration
+argo-cd:
+  server:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+    ingress:
+      enabled: true
+      hosts:
+        - argocd.example.com
+      tls:
+        - secretName: argocd-example-com-tls
+          hosts:
+            - argocd.example.com
+      ingressClassName: "nginx"
+  repoServer:
+    replicas: 2
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  redis:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi

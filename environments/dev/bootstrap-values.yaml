@@ -1,0 +1,7 @@
+# Local development values for the bootstrap chart
+repository:
+  url: https://github.com/BenedictusAryo/local-gitops-kube-config.git
+  # Uncomment and fill these for private repositories
+  # auth:
+  #   username: "your-github-username"
+  #   password: "your-github-personal-access-token"

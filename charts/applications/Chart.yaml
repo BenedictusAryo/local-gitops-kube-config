@@ -1,0 +1,11 @@
+apiVersion: v2
+name: applications
+description: Parent Helm chart for all application components
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+dependencies:
+  - name: fastapi-app
+    version: "0.1.0"
+    repository: https://github.com/BenedictusAryo/fastapi-app.git
+    condition: fastapi-app.enabled

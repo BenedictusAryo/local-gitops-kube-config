@@ -3,6 +3,8 @@
 Develop and experience a local GitOps workflow for Kubernetes applications using Docker, Kind, Kubernetes, ArgoCD, Helm, and GitHub.
 
 > **New to this project?** Check out the [QuickStart Guide](./QUICKSTART.md) for a fast setup!
+> 
+> **Mac/Linux Users:** Bash script equivalents are now available! See [Bash Scripts Guide](./BASH_SCRIPTS.md) for details.
 
 ## Purpose
 

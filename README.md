@@ -140,74 +140,256 @@ kubectl cluster-info --context kind-local-gitops-cluster
 ```
 
 3. **Install ArgoCD** manually and port-forward for local access:
+*  **Create a Dedicated Namespace**
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl rollout status deployment/argocd-server -n argocd
+```
+This creates a Kubernetes namespace called "argocd" where all ArgoCD components will be deployed, keeping them isolated from other applications.
 
-4. **Get initial ArgoCD Password**
+* **Bootstrap ArgoCD with Helm**
+Manually install Argo CD into your cluster first. 
+```bash
+# Add the ArgoCD Helm repo and update
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
+# Install ArgoCD via Helm
+helm install argocd argo/argo-cd --namespace argocd
+```
+
+* **Get initial ArgoCD Password**
 The default password for the admin user is auto-generated. Get it:
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+# or
+argocd admin initial-password -n argocd
 ```
 
-5. **Port Forward Access**
+* **Port Forward Access**
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 Then navigate to https://127.0.0.1:8080/ to change the password.
+
+* **Use ArgoCD CLI**
+```bash
+# Install ArgoCD CLI
+# macOS (Homebrew)
+brew install argocd
+
+# Windows (Scoop)
+scoop install argocd
+
+# Verify installation
+argocd version
+
+# Log in to the local ArgoCD server
+argocd login localhost:8080 \
+  --username admin \
+  --password "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
+  --insecure
+
+# (Optional) If you have multiple ArgoCD API contexts, set the default
+argocd context localhost:8080
+
+# Ensure kubectl is pointing at your Kind cluster
+kubectl config use-context kind-local-gitops-cluster
+```  
+
+## Connecting ArgoCD to GitHub Repository
+
+After installing ArgoCD and gaining access to the UI, you need to connect ArgoCD to your GitHub repository to enable the GitOps workflow. Here's how to do it:
+
+### 1. Login to ArgoCD CLI (Optional but Recommended)
+
+Install the ArgoCD CLI and login:
+
+```bash
+# Login to ArgoCD using the CLI
+argocd login localhost:8080 --username admin --password <your-password> --insecure
+```
+
+### 2. Add Repository to ArgoCD
+
+You can add your repository using either the CLI or the UI:
+
+#### Using ArgoCD CLI:
+
+```bash
+# For a public repository
+argocd repo add https://github.com/BenedictusAryo/local-gitops-kube-config.git
+
+# For a private repository with username/password
+argocd repo add https://github.com/BenedictusAryo/local-gitops-kube-config.git \
+  --username <github-username> \
+  --password <github-personal-access-token>
+
+# For a private repository with SSH
+argocd repo add git@github.com:BenedictusAryo/local-gitops-kube-config.git \
+  --ssh-private-key-path ~/.ssh/id_rsa
+```
+
+#### Using ArgoCD UI:
+
+1. Open the ArgoCD UI (https://localhost:8080)
+2. Login with admin credentials
+3. Navigate to "Settings" → "Repositories" → "Connect Repo"
+4. Fill in the repository details:
+   - For public repos: Just the HTTPS URL
+   - For private repos: Add authentication details
+5. Click "Connect" to add the repository
+
+### 3. Create the Initial ArgoCD Applications
+
+Now you need to create the initial ArgoCD Applications that will deploy your infrastructure and applications:
+
+```bash
+# Apply the infrastructure application
+kubectl apply -f manifests/infra-app.yaml
+
+# Apply the applications application
+kubectl apply -f manifests/apps-app.yaml
+```
+
+These application manifests define the connection between ArgoCD and specific paths in your repository.
+
+### 4. Verify the Connection
+
+Verify that ArgoCD has successfully connected to your repository:
+
+```bash
+# Check repositories
+argocd repo list
+
+# Check applications
+argocd app list
+```
+
+In the ArgoCD UI, you should now see your applications and their sync status.
+
+### 5. Working with Private Repositories
+
+If you're using private repositories, you have several authentication options:
+
+1. **Personal Access Token (PAT)**: Create a GitHub PAT with `repo` scope
+2. **Deploy Keys**: Add a repository-specific SSH key
+3. **GitHub App**: For more granular permissions
+
+For local development with a private repository, using a PAT is typically the simplest approach:
+
+```bash
+# Create a Kubernetes secret for GitHub credentials
+kubectl create secret generic github-creds \
+  --namespace argocd \
+  --from-literal=username=<github-username> \
+  --from-literal=password=<github-personal-access-token>
+
+# Reference this secret in your ArgoCD repository configuration
+```
+
+Once the repository connection is established, ArgoCD will continuously monitor your Git repository for changes and automatically apply them to your Kubernetes cluster according to the defined applications.
+
+---
 
 ## Repository Structure
 This repository is structured to manage the deployment of various applications into the Kubernetes cluster via ArgoCD:
 
 ```
 .
-├── argocd/                # (Optional) For ArgoCD self-management application definition
-│   └── application.yaml
-├── infra/                 # Infrastructure components
-│   ├── nginx-ingress/
-│   │   └── application.yaml # ArgoCD Application manifest for Nginx Ingress
-│   └── postgresql/
-│       └── application.yaml # ArgoCD Application manifest for PostgreSQL
-└── apps/                  # Custom applications
-    └── fastapi-app/
-        └── application.yaml # ArgoCD Application manifest for the FastAPI application
+├── charts/                             # Main directory for Helm charts
+│   ├── infrastructure/                 # Parent chart for all infrastructure components
+│   │   ├── Chart.yaml                  # Main chart definition
+│   │   ├── values.yaml                 # Default values for infrastructure
+│   │   └── charts/                     # Subcharts for infrastructure components
+│   │       ├── argocd/                 # ArgoCD subchart (for self-management after initial setup)
+│   │       ├── nginx-ingress/          # Nginx Ingress subchart
+│   │       └── postgresql/             # PostgreSQL subchart
+│   └── applications/                   # Parent chart for all applications
+│       ├── Chart.yaml                  # Main chart definition
+│       ├── values.yaml                 # Default values for applications
+│       └── charts/                     # Subcharts for applications
+│           └── fastapi-app/            # FastAPI application subchart
+├── manifests/                          # ArgoCD Application manifests 
+│   ├── infra-app.yaml                  # ArgoCD Application for infrastructure (includes ArgoCD itself)
+│   └── apps-app.yaml                   # ArgoCD Application for applications
+└── environments/                       # Environment-specific overrides
+    └── dev/                            # Development environment
+        ├── infra-values.yaml           # Infra values override for dev
+        └── apps-values.yaml            # App values override for dev
 ```
 
-Each application.yaml file is an ArgoCD Application Custom Resource Definition (CRD) that tells ArgoCD:
+### Helm Chart and Subchart Structure
 
-* Which Git repository to monitor (source).
-* Which path within that repository contains the Kubernetes manifests or Helm chart.
-* The target revision (e.g., branch, tag, commit).
-* The destination Kubernetes cluster and namespace.
-* Any specific parameters or values overrides for Helm charts.
+This repository uses Helm's parent-child chart relationship (umbrella charts) to organize deployments:
 
-## Getting Started
-1. **Prerequisites:** Ensure Docker, Kind, kubectl, Helm, and the ArgoCD CLI are installed.
-Clone this repository: `git clone https://github.com/BenedictusAryo/local-gitops-kube-config.git`
-2. **Set up Kind Cluster:** Follow the instructions from the main guide to create your Kind cluster with appropriate port mappings.
-3. **Install ArgoCD:** Install ArgoCD into your Kind cluster and configure access (login, connect to Git repos).
-4. **Apply ArgoCD Applications:** Once ArgoCD is running and can access this repository, it will automatically start deploying the applications defined herein. You can also manually trigger syncs via the ArgoCD UI or CLI.
-    * Initially, you might apply a root application or apply these manifests directly using `kubectl apply -n argocd -f <path-to-application.yaml>`. For a fully GitOps approach, ensure ArgoCD is configured to watch this repository.
-*(You can add more specific instructions on how to bootstrap the process if you have a root ArgoCD Application manifest that deploys all other applications, or if users need to manually apply these manifests to ArgoCD first.)*
+- **Parent Charts**: The `infrastructure` and `applications` directories contain parent charts that serve as logical groupings for related components.
+
+- **Subcharts**: Each parent chart contains a `charts` directory with subcharts for individual components. These can be either:
+  - Custom charts developed for this project (like `fastapi-app`)
+  - Dependencies on public charts (defined in the parent chart's `Chart.yaml` and stored in the `charts` directory)
+
+- **Values Management**: 
+  - Each chart has its default `values.yaml`
+  - Environment-specific values are stored in the `environments` directory
+  - Values cascade from parent charts to subcharts, allowing for centralized configuration
+
+This structure supports Helm's reusability while maintaining clear separation between components.
+
+### Separation Between Infrastructure and Applications
+
+This repository maintains a clear distinction between infrastructure and application components:
+
+- **Infrastructure Components** (`charts/infrastructure/`):
+  - These are foundational services necessary for the platform to function
+  - Typically requires admin/elevated privileges to deploy
+  - Changes less frequently than applications
+  - Includes components like ArgoCD (for self-management), Nginx Ingress, and databases
+
+- **Applications** (`charts/applications/`):
+  - Business logic and services that provide direct value
+  - Can be deployed by development teams with appropriate permissions
+  - Change more frequently as business needs evolve
+  - Includes components like the FastAPI application
+
+This separation provides several benefits:
+- Clear ownership boundaries between platform and application teams
+- Different deployment cadences and approval processes
+- Ability to version and roll back infrastructure separately from applications
+- Better alignment with organizational responsibilities
 
 ## CI/CD Workflow
 
-1. Application Code Change (fastapi-app repo):
+The GitOps workflow implemented in this project follows these steps:
 
-* Developer modifies application code.
-* Builds and pushes a new Docker image (e.g., to a local Kind registry or a remote registry).
-* Updates the Helm chart in the fastapi-app repo (e.g., image tag, application config).
-* Pushes changes to the fastapi-app Git repository.
+1. **Initial Setup**:
+   - Create a Kind cluster using the configuration provided
+   - Manually deploy ArgoCD to bootstrap the GitOps process
+   - Apply the initial ArgoCD Application manifests to connect ArgoCD to this repository
 
-2. Configuration Change (local-gitops-kube-config repo):
-* Developer modifies Helm chart values, replica counts, or adds/removes applications by changing the ArgoCD Application manifests in this repository.
-* Pushes changes to the local-gitops-kube-config Git repository.
+2. **Infrastructure Deployment**:
+   - ArgoCD pulls the infrastructure chart and its subcharts 
+   - Creates or updates infrastructure components (including ArgoCD itself)
+   - Infrastructure becomes self-managed through GitOps
 
-3. ArgoCD Sync:
+3. **Application Deployment**:
+   - Update application code in the FastAPI repository
+   - Update application Helm chart as needed
+   - ArgoCD detects changes and automatically deploys updates
 
-* ArgoCD detects changes in the watched Git repositories/paths/branches.
-* ArgoCD compares the live state in the Kubernetes cluster with the desired state in Git.
-* ArgoCD automatically (if configured) syncs the changes, applying them to the Kind cluster.
+4. **Making Changes**:
+   - To modify infrastructure: Update values in `environments/dev/infra-values.yaml`
+   - To modify applications: Update values in `environments/dev/apps-values.yaml`
+   - Commit and push changes to trigger automatic deployment
 
-This ensures your local Kubernetes environment accurately reflects the configurations defined in your Git repositories.
+5. **Monitoring Deployments**:
+   ```bash
+   # View ArgoCD applications status
+   kubectl get applications -n argocd
+   
+   # View sync status and health of all applications
+   argocd app list
+   
+   # Get detailed information about a specific application
+   argocd app get infrastructure
+   ```

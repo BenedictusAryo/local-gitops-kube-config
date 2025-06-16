@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-install
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: "8.0.9"
+    helm:
+      releaseName: argocd
+      values: |        # Configuration for local development with Kind cluster
+        configs:
+          params:
+            server.insecure: "true"
+        server:
+          service:
+            type: NodePort
+            nodePortHttp: 30080
+          ingress:
+            enabled: false
+          replicas: 1
+          # Schedule ArgoCD server on infra nodes
+          tolerations:
+          - key: "node-role.kubernetes.io/infra"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          nodeSelector:
+            node-role.kubernetes.io/infra: "true"
+        # Disable HA mode for local development
+        redis-ha:
+          enabled: false
+        controller:
+          replicas: 1
+          # Schedule ArgoCD controller on infra nodes
+          tolerations:
+          - key: "node-role.kubernetes.io/infra"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          nodeSelector:
+            node-role.kubernetes.io/infra: "true"
+        repoServer:
+          replicas: 1
+          # Schedule ArgoCD repo server on infra nodes
+          tolerations:
+          - key: "node-role.kubernetes.io/infra"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          nodeSelector:
+            node-role.kubernetes.io/infra: "true"
+        redis:
+          # Schedule Redis on infra nodes
+          tolerations:
+          - key: "node-role.kubernetes.io/infra"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          nodeSelector:
+            node-role.kubernetes.io/infra: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-init
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/BenedictusAryo/local-gitops-kube-config.git
+    targetRevision: HEAD
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: argocd
+spec:
+  sourceRepos:
+  - '*'
+  destinations:
+  - namespace: '*'
+    server: '*'
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
